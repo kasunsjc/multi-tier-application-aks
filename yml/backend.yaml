@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  labels:
+    app: backend
+    aadpodidbinding: <identity name created>
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        aadpodidbinding: <identity name created>
+    spec:
+      containers:
+      - name: backend
+        image: <Backend image built>
+        ports:
+        - containerPort: 80
+        imagePullPolicy: Always
+        env:
+        - name: KeyVaultName
+          value: "<Keyvault Name>"
+        volumeMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: azure-sync
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+spec:
+  selector:
+    app: backend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 80

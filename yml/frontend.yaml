@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: conexp-frontend
+    aadpodidbinding: <identity name created>
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: conexp-frontend
+  template:
+    metadata:
+      labels:
+        app: conexp-frontend
+        aadpodidbinding: <identity name created>
+    spec:
+      containers:
+      - name: frontend
+        image: <frontend image built>
+        ports:
+        - containerPort: 80  
+        imagePullPolicy: Always
+        env:
+        - name: KeyVaultName
+          value: "<Keyvault Name>"
+        - name: QueueName
+          value: "contosoexpenses"
+        - name: ConfigValues__CostCenterAPIUrl
+          value: "http://backend-svc.default.svc.cluster.local:80"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: conexp-frontend-svc
+  labels:
+    app: conexp-frontend
+spec:
+  selector:
+    app: conexp-frontend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 80
+

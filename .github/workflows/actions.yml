@@ -1,0 +1,72 @@
+on: [push]
+name: AKS_CNCF_Services_WorkFlow
+
+env:
+  CLUSTER_NAME: 'cncfazcluster'
+  CLUSTER_RESOURCE_GROUP: 'CNCF-Azure-RG'
+
+jobs:
+    build-and-deploy:
+        runs-on: ubuntu-latest
+        steps:
+        # checkout the repo
+        - name: 'Checkout GitHub Action'
+          uses: actions/checkout@main
+          
+        - name: 'Login via Azure CLI'
+          uses: azure/login@v1
+          with:
+            creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+        - name: 'Docker Login to ACR'
+          uses: azure/docker-login@v1
+          with:
+            login-server: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+            username: ${{ secrets.REGISTRY_USERNAME }}
+            password: ${{ secrets.REGISTRY_PASSWORD }}
+
+        - name: 'Build and push image'
+          run: |
+            cd source/Contoso.Expenses.API
+            docker build . -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/api:${{ github.sha }}
+            docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/api:${{ github.sha }}
+
+            cd ..
+            docker build . -f Contoso.Expenses.Web/Dockerfile -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/web:${{ github.sha }}
+            docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/web:${{ github.sha }}
+
+            docker build . -f Contoso.Expenses.KedaFunctions/Dockerfile -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/emaildispatcher:${{ github.sha }}
+            docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/emaildispatcher:${{ github.sha }}
+
+            cd ..
+        
+        - name: 'Set AKS Context'
+          uses: azure/aks-set-context@v1
+          with:
+            creds: '${{ secrets.AZURE_CREDENTIALS }}'
+            cluster-name: ${{ env.CLUSTER_NAME }}
+            resource-group: ${{ env.CLUSTER_RESOURCE_GROUP }}
+
+        - name: 'Deploy Backend'
+          uses: Azure/k8s-deploy@v1.3
+          with:
+            manifests: |
+                yml/backend.yaml
+            images: '${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/api:${{ github.sha }}'
+            kubectl-version: 'latest'
+        
+        - name: 'Deploy Frontend'
+          uses: Azure/k8s-deploy@v1.3
+          with:
+            manifests: |
+                yml/frontend.yaml
+            images: '${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/web:${{ github.sha }}'        
+            kubectl-version: 'latest'
+
+        - name: 'Deploy KEDA Function'
+          uses: Azure/k8s-deploy@v1.3
+          with:
+            manifests: |
+                yml/function.yaml
+            images: '${{ secrets.REGISTRY_LOGIN_SERVER }}/conexp/emaildispatcher:${{ github.sha }}'
+            kubectl-version: 'latest'
